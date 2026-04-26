@@ -14,8 +14,8 @@ except ModuleNotFoundError:
 
 
 TILE = 24
-COLS = 45
-ROWS = 33
+COLS = 30
+ROWS = 22
 HUD_HEIGHT = 56
 WIDTH = COLS * TILE
 HEIGHT = ROWS * TILE + HUD_HEIGHT
@@ -23,13 +23,6 @@ FPS = 60
 BASE_STEP_MS = 150
 MIN_STEP_MS = 70
 TURN_BUFFER_LIMIT = 3
-NORMAL_SPEED_INCREASE_MS = 9
-EXPERT_SPEED_MULTIPLIER = 3
-BURST_DURATION_MS = 650
-BURST_PARTICLES = 34
-BURST_FLASH_RADIUS = TILE * 0.75
-BURST_SHOCKWAVE_RADIUS = TILE * 2.2
-BURST_SHOCKWAVE_WIDTH = 3
 
 BG = (13, 18, 22)
 BOARD_BG = (18, 27, 31)
@@ -44,13 +37,6 @@ TEXT = (226, 235, 225)
 MUTED = (126, 146, 143)
 PANEL = (10, 14, 18)
 WARNING = (255, 108, 108)
-
-
-@dataclass
-class Burst:
-    center: pygame.Vector2
-    started_at: int
-    particles: list
 
 
 class Direction(Enum):
@@ -76,7 +62,6 @@ class Cell:
 class SnakeGame:
     def __init__(self):
         self.high_score = 0
-        self.difficulty = None
         self.reset()
 
     def reset(self):
@@ -95,28 +80,17 @@ class SnakeGame:
         self.started = False
         self.paused = False
         self.game_over = False
-        self.message = "Choose" if self.difficulty is None else "Ready"
-        self.bursts = []
+        self.message = "Ready"
         self.food = self.spawn_food()
         self.step_started_at = pygame.time.get_ticks()
 
     @property
     def level(self):
-        return 1+(self.score/3) * 0.5
+        return 1 + (self.score / 3) * 0.5
 
     @property
     def step_ms(self):
-        speed_multiplier = EXPERT_SPEED_MULTIPLIER if self.difficulty == "Expert" else 1
-        speed_increase = (self.level - 1) * NORMAL_SPEED_INCREASE_MS * speed_multiplier
-        return max(MIN_STEP_MS, BASE_STEP_MS - speed_increase)
-
-    def select_difficulty(self, difficulty):
-        self.difficulty = difficulty
-        self.reset()
-
-    def return_to_menu(self):
-        self.difficulty = None
-        self.reset()
+        return max(MIN_STEP_MS, BASE_STEP_MS - (self.level - 1) * 9)
 
     def spawn_food(self):
         if len(self.occupied) >= COLS * ROWS:
@@ -135,7 +109,7 @@ class SnakeGame:
         return None
 
     def change_direction(self, direction):
-        if self.game_over or self.difficulty is None:
+        if self.game_over:
             return
 
         planned_direction = self.direction_queue[-1] if self.direction_queue else self.direction
@@ -196,7 +170,6 @@ class SnakeGame:
         self.occupied.add(new_head)
 
         if growing:
-            self.add_burst(self.food)
             self.score += 1
             self.high_score = max(self.high_score, self.score)
             self.food = self.spawn_food()
@@ -207,26 +180,6 @@ class SnakeGame:
 
     def hits_wall(self, cell):
         return cell.col < 0 or cell.col >= COLS or cell.row < 0 or cell.row >= ROWS
-
-    def add_burst(self, cell):
-        if cell is None:
-            return
-
-        center = board_pos(cell)
-        particles = []
-        for index in range(BURST_PARTICLES):
-            angle = math.tau * index / BURST_PARTICLES + random.uniform(-0.22, 0.22)
-            distance = random.uniform(TILE * 1.05, TILE * 2.2)
-            radius = random.randint(4, 8)
-            particles.append((pygame.Vector2(math.cos(angle), math.sin(angle)), distance, radius))
-        self.bursts.append(Burst(center=center, started_at=pygame.time.get_ticks(), particles=particles))
-
-    def prune_bursts(self, now):
-        self.bursts = [
-            burst
-            for burst in self.bursts
-            if now - burst.started_at <= BURST_DURATION_MS
-        ]
 
 
 def board_pos(cell):
@@ -267,9 +220,8 @@ def draw_board(screen):
 def draw_hud(screen, game, font, small_font):
     pygame.draw.rect(screen, PANEL, (0, 0, WIDTH, HUD_HEIGHT))
     title = font.render("Smooth Snake", True, TEXT)
-    difficulty = game.difficulty if game.difficulty is not None else "Choose"
     stats = small_font.render(
-        f"Score {game.score:03d}   Best {game.high_score:03d}   Level {game.level:.1f}   {difficulty}",
+        f"Score {game.score:03d}   Best {game.high_score:03d}   Level {game.level:02d}",
         True,
         TEXT,
     )
@@ -291,64 +243,6 @@ def draw_food(screen, game, now):
     radius = int(TILE * 0.28 * pulse)
     pygame.draw.circle(screen, FOOD_GLOW, center, radius + 5)
     pygame.draw.circle(screen, FOOD, center, radius)
-
-
-def draw_bursts(screen, game, now):
-    for burst in game.bursts:
-        age = now - burst.started_at
-        progress = min(1.0, max(0.0, age / BURST_DURATION_MS))
-        alpha = max(0, int(255 * (1 - progress)))
-
-        flash_progress = min(1.0, progress * 4.0)
-        flash_radius = int(BURST_FLASH_RADIUS * (1 - flash_progress * 0.25))
-        flash_alpha = max(0, int(210 * (1 - flash_progress)))
-        if flash_alpha:
-            draw_alpha_circle(screen, FOOD_GLOW, flash_alpha, burst.center, flash_radius)
-
-        ring_radius = int(BURST_SHOCKWAVE_RADIUS * ease(progress))
-        ring_alpha = max(0, int(170 * (1 - progress)))
-        if ring_radius > 1 and ring_alpha:
-            draw_alpha_ring(
-                screen,
-                blend(FOOD_GLOW, SNAKE_HEAD, progress),
-                ring_alpha,
-                burst.center,
-                ring_radius,
-                BURST_SHOCKWAVE_WIDTH,
-            )
-
-        for direction, distance, radius in burst.particles:
-            position = burst.center + direction * distance * ease(progress)
-            size = max(1, int(radius * (1 - progress * 0.72)))
-            color = blend(FOOD_GLOW, SNAKE_HEAD, progress)
-            draw_alpha_circle(screen, color, alpha, position, size)
-
-
-def blend(start, end, progress):
-    return tuple(
-        int(start[index] + (end[index] - start[index]) * progress)
-        for index in range(3)
-    )
-
-
-def draw_alpha_circle(screen, color, alpha, center, radius):
-    diameter = radius * 2 + 2
-    surface = pygame.Surface((diameter, diameter), pygame.SRCALPHA)
-    pygame.draw.circle(surface, (*color, alpha), (diameter // 2, diameter // 2), radius)
-    screen.blit(surface, (center.x - diameter / 2, center.y - diameter / 2))
-
-
-def draw_alpha_ring(screen, color, alpha, center, radius, width):
-    diameter = radius * 2 + width * 2 + 2
-    surface = pygame.Surface((diameter, diameter), pygame.SRCALPHA)
-    pygame.draw.circle(
-        surface,
-        (*color, alpha),
-        (diameter // 2, diameter // 2),
-        radius,
-        width,
-    )
-    screen.blit(surface, (center.x - diameter / 2, center.y - diameter / 2))
 
 
 def draw_snake(screen, game, progress):
@@ -396,45 +290,7 @@ def draw_overlay(screen, title, subtitle, font, small_font, warning=False):
     screen.blit(subtitle_surface, subtitle_surface.get_rect(center=(panel.centerx, panel.y + 88)))
 
 
-def draw_difficulty_overlay(screen, font, small_font):
-    panel = pygame.Rect(0, 0, 560, 190)
-    panel.center = (WIDTH // 2, HEIGHT // 2)
-    pygame.draw.rect(screen, (8, 12, 15), panel, border_radius=12)
-    pygame.draw.rect(screen, SNAKE_BODY, panel, width=2, border_radius=12)
-
-    title_surface = font.render("Choose Difficulty", True, TEXT)
-    screen.blit(title_surface, title_surface.get_rect(center=(panel.centerx, panel.y + 38)))
-
-    normal_rect = pygame.Rect(0, 0, 220, 70)
-    expert_rect = pygame.Rect(0, 0, 220, 70)
-    normal_rect.center = (panel.centerx - 122, panel.y + 105)
-    expert_rect.center = (panel.centerx + 122, panel.y + 105)
-
-    for rect, title, subtitle, accent in (
-        (normal_rect, "Normal", "Standard speed increase", SNAKE_BODY),
-        (expert_rect, "Expert", "Triple speed growth", FOOD),
-    ):
-        pygame.draw.rect(screen, (14, 22, 25), rect, border_radius=8)
-        pygame.draw.rect(screen, accent, rect, width=2, border_radius=8)
-        title_surface = small_font.render(title, True, TEXT)
-        subtitle_surface = small_font.render(subtitle, True, MUTED)
-        screen.blit(title_surface, title_surface.get_rect(center=(rect.centerx, rect.y + 24)))
-        screen.blit(subtitle_surface, subtitle_surface.get_rect(center=(rect.centerx, rect.y + 48)))
-
-    hint = small_font.render("Press 1/N or 2/E", True, MUTED)
-    screen.blit(hint, hint.get_rect(center=(panel.centerx, panel.bottom - 24)))
-
-
 def handle_key(event, game):
-    if game.difficulty is None:
-        if event.key in (pygame.K_1, pygame.K_KP1, pygame.K_n):
-            game.select_difficulty("Normal")
-        elif event.key in (pygame.K_2, pygame.K_KP2, pygame.K_e):
-            game.select_difficulty("Expert")
-        elif event.key in (pygame.K_q, pygame.K_ESCAPE):
-            return False
-        return True
-
     if event.key in (pygame.K_UP, pygame.K_w):
         game.change_direction(Direction.UP)
     elif event.key in (pygame.K_DOWN, pygame.K_s):
@@ -448,7 +304,7 @@ def handle_key(event, game):
     elif event.key == pygame.K_r:
         game.reset()
     elif event.key in (pygame.K_q, pygame.K_ESCAPE):
-        game.return_to_menu()
+        return False
     return True
 
 
@@ -471,18 +327,14 @@ def main():
                 running = handle_key(event, game)
 
         game.update(now)
-        game.prune_bursts(now)
         progress = game.animation_progress(now)
 
         draw_board(screen)
-        draw_bursts(screen, game, now)
         draw_food(screen, game, now)
         draw_snake(screen, game, progress)
         draw_hud(screen, game, font, small_font)
 
-        if game.difficulty is None:
-            draw_difficulty_overlay(screen, font, small_font)
-        elif not game.started:
+        if not game.started:
             draw_overlay(screen, "Smooth Snake", "Press an arrow key or WASD", font, small_font)
         elif game.paused:
             draw_overlay(screen, "Paused", "Press P or move to resume", font, small_font)
