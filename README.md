@@ -1,6 +1,6 @@
-﻿# Snake Game (Terminal)
+# Snake Game
 
-A polished terminal-based Snake game built in Python using curses.
+A polished Snake game with both terminal and smooth Pygame versions.
 
 ## Controls
 
@@ -11,16 +11,26 @@ A polished terminal-based Snake game built in Python using curses.
 
 ## Features
 
-- Unicode arcade-style playfield
+- Smooth Pygame version with interpolated 60 FPS movement
+- Unicode arcade-style terminal playfield
 - Connected snake body with straight, curved, and tail segments
-- Horizontally scaled playfield so vertical and sideways movement look the same length
+- Horizontally scaled terminal playfield so vertical and sideways movement look the same length
 - Start, pause, and game-over screens
 - Score, high score, and level display
 - Speed increases as your score climbs
-- Dirty rendering during active play for smoother terminal performance
+- Dirty rendering during active terminal play for smoother terminal performance
 - Faster collision and food placement using set-backed board occupancy
 
 ## How to run
+
+Smooth graphical version:
+
+```bash
+py -m pip install pygame
+py snake_pygame.py
+```
+
+Terminal version:
 
 ```bash
 py snake.py
@@ -32,4 +42,4 @@ On Windows, install curses support first if needed:
 py -m pip install windows-curses
 ```
 
-Use a terminal at least 44 columns wide and 16 rows tall.
+Use a terminal at least 44 columns wide and 16 rows tall for the terminal version.
