@@ -2,6 +2,9 @@
 
 A polished Snake game with both terminal and smooth Pygame versions.
 
+# Development 
+This project is being improved iteratively
+
 ## Controls
 
 - 1/N for Normal difficulty or 2/E for Expert difficulty
